@@ -2,7 +2,7 @@ name: "Ship It - Deploy Page"
 
 on:
   repository_dispatch:
-    types: [zekt_event]
+    types: [ship-it-demo]
 
 jobs:
   deploy-page:
