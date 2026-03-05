@@ -1,0 +1,52 @@
+name: "Cleanup Old Demo Pages"
+
+on:
+  schedule:
+    - cron: '0 3 * * *'   # Daily at 3:00 AM UTC
+  workflow_dispatch:       # Allow manual trigger
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Checkout repo"
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # Full history for commit date checking
+
+      - name: "Delete old demo directories"
+        run: |
+          echo "🧹 Cleaning up demo pages older than 24 hours..."
+          CUTOFF=$(date -d '24 hours ago' +%s 2>/dev/null || date -v-24H +%s)
+          DELETED=0
+
+          for dir in docs/demo-*/; do
+            [ -d "$dir" ] || continue
+
+            # Get last commit date for this directory
+            LAST_COMMIT=$(git log -1 --format=%ct -- "$dir" 2>/dev/null || echo "0")
+
+            if [ "$LAST_COMMIT" -lt "$CUTOFF" ]; then
+              DIR_NAME=$(basename "$dir")
+              COMMIT_DATE=$(date -d @"$LAST_COMMIT" 2>/dev/null || date -r "$LAST_COMMIT")
+              echo "  🗑️  Deleting: $DIR_NAME (last commit: $COMMIT_DATE)"
+              rm -rf "$dir"
+              DELETED=$((DELETED + 1))
+            else
+              echo "  ✅ Keeping: $(basename "$dir") (recent)"
+            fi
+          done
+
+          echo ""
+          echo "Summary: $DELETED directories marked for deletion"
+
+          if [ "$DELETED" -gt 0 ]; then
+            git config user.name "zekt-deploy-bot"
+            git config user.email "deploy@zekt.io"
+            git add docs/
+            git commit -m "🧹 Cleanup: removed $DELETED old demo pages"
+            git push
+            echo "✅ Cleaned up $DELETED demo pages and pushed"
+          else
+            echo "✅ No old demo pages to clean up"
+          fi

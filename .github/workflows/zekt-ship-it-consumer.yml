@@ -1,0 +1,125 @@
+name: "Ship It - Deploy Page"
+
+on:
+  repository_dispatch:
+    types: [zekt_event]
+
+jobs:
+  deploy-page:
+    runs-on: ubuntu-latest
+    steps:
+
+      # ── Step 1: Receive event ─────────────────────────────────────────
+      - name: "Step 1: Receive Zekt event"
+        id: init
+        run: |
+          CORRELATION="${{ github.event.client_payload.zekt.correlationId }}"
+          echo "correlation=$CORRELATION" >> "$GITHUB_OUTPUT"
+          echo "📨 Received page from provider"
+          echo "   Correlation: $CORRELATION"
+
+          curl -s -X POST "${{ vars.ZEKT_DEMO_API }}/api/demo/progress" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"correlationId\": \"$CORRELATION\",
+              \"workflow\": \"consumer\",
+              \"step\": 1,
+              \"totalSteps\": 4,
+              \"status\": \"in_progress\",
+              \"message\": \"Event received from provider\",
+              \"runId\": \"${{ github.run_id }}\",
+              \"runUrl\": \"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"
+            }"
+
+      # ── Step 2: Checkout & write page ─────────────────────────────────
+      - name: "Checkout repo"
+        uses: actions/checkout@v4
+
+      - name: "Step 2: Write page file"
+        run: |
+          CORRELATION="${{ steps.init.outputs.correlation }}"
+          HTML_B64="${{ github.event.client_payload.zekt.payload.html_b64 }}"
+
+          # Create directory for this demo
+          DEPLOY_DIR="docs/demo-${CORRELATION}"
+          mkdir -p "$DEPLOY_DIR"
+
+          # Decode and write HTML
+          echo "$HTML_B64" | base64 -d > "$DEPLOY_DIR/index.html"
+
+          FILE_SIZE=$(wc -c < "$DEPLOY_DIR/index.html")
+          echo "✅ Written to $DEPLOY_DIR/index.html ($FILE_SIZE bytes)"
+
+          curl -s -X POST "${{ vars.ZEKT_DEMO_API }}/api/demo/progress" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"correlationId\": \"$CORRELATION\",
+              \"workflow\": \"consumer\",
+              \"step\": 2,
+              \"totalSteps\": 4,
+              \"status\": \"in_progress\",
+              \"message\": \"Page written to repo ✅\"
+            }"
+
+      # ── Step 3: Commit & push (triggers GitHub Pages) ─────────────────
+      - name: "Step 3: Deploy to GitHub Pages"
+        run: |
+          CORRELATION="${{ steps.init.outputs.correlation }}"
+
+          git config user.name "zekt-deploy-bot"
+          git config user.email "deploy@zekt.io"
+          git add docs/
+          git commit -m "🚀 Deploy demo page: $CORRELATION"
+          git push
+
+          echo "✅ Committed and pushed — GitHub Pages will rebuild"
+
+          curl -s -X POST "${{ vars.ZEKT_DEMO_API }}/api/demo/progress" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"correlationId\": \"$CORRELATION\",
+              \"workflow\": \"consumer\",
+              \"step\": 3,
+              \"totalSteps\": 4,
+              \"status\": \"in_progress\",
+              \"message\": \"Deployed to GitHub Pages ✅\"
+            }"
+
+      # ── Step 4: Verify live & report URL ──────────────────────────────
+      - name: "Step 4: Verify & report URL"
+        run: |
+          CORRELATION="${{ steps.init.outputs.correlation }}"
+          DEPLOYED_URL="https://zekt-dev-org.github.io/zekt-demo-consumer/demo-${CORRELATION}/"
+
+          # Wait for Pages to propagate
+          echo "⏳ Waiting for GitHub Pages propagation..."
+          sleep 8
+
+          # Verify page is accessible (retry up to 3 times)
+          for i in 1 2 3; do
+            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$DEPLOYED_URL" || echo "000")
+            echo "📡 Attempt $i: HTTP $HTTP_STATUS"
+            if [ "$HTTP_STATUS" = "200" ]; then
+              break
+            fi
+            sleep 5
+          done
+
+          # Report completion with deployed URL
+          curl -s -X POST "${{ vars.ZEKT_DEMO_API }}/api/demo/progress" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"correlationId\": \"$CORRELATION\",
+              \"workflow\": \"consumer\",
+              \"step\": 4,
+              \"totalSteps\": 4,
+              \"status\": \"completed\",
+              \"message\": \"Page is LIVE at $DEPLOYED_URL\",
+              \"deployedUrl\": \"$DEPLOYED_URL\"
+            }"
+
+          echo ""
+          echo "🎉 ════════════════════════════════════════════"
+          echo "   Page is LIVE!"
+          echo "   $DEPLOYED_URL"
+          echo "   ════════════════════════════════════════════"
