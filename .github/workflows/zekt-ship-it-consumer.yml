@@ -18,18 +18,29 @@ jobs:
           echo "📨 Received page from provider"
           echo "   Correlation: $CORRELATION"
 
-          curl -s -X POST "${{ vars.ZEKT_DEMO_API }}/api/demo/progress" \
-            -H "Content-Type: application/json" \
-            -d "{
-              \"correlationId\": \"$CORRELATION\",
-              \"workflow\": \"consumer\",
-              \"step\": 1,
-              \"totalSteps\": 4,
-              \"status\": \"in_progress\",
-              \"message\": \"Event received from provider\",
-              \"runId\": ${{ github.run_id }},
-              \"runUrl\": \"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"
-            }"
+          DEMO_API="${{ vars.ZEKT_DEMO_API }}"
+          echo "📡 ZEKT_DEMO_API = '${DEMO_API:-<NOT SET>}'"
+          if [ -z "$DEMO_API" ]; then
+            echo "::warning::ZEKT_DEMO_API variable is not set! Progress reporting will not work."
+          else
+            HTTP_CODE=$(curl -s -o /tmp/curl_response.txt -w "%{http_code}" -X POST "${DEMO_API}/api/demo/progress" \
+              -H "Content-Type: application/json" \
+              -d "{
+                \"correlationId\": \"$CORRELATION\",
+                \"workflow\": \"consumer\",
+                \"step\": 1,
+                \"totalSteps\": 4,
+                \"status\": \"in_progress\",
+                \"message\": \"Event received from provider\",
+                \"runId\": ${{ github.run_id }},
+                \"runUrl\": \"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"
+              }") || HTTP_CODE="000"
+            echo "📡 Progress report: HTTP $HTTP_CODE"
+            cat /tmp/curl_response.txt 2>/dev/null && echo
+            if [ "$HTTP_CODE" != "200" ]; then
+              echo "::warning::Progress report failed with HTTP $HTTP_CODE"
+            fi
+          fi
 
       # ── Step 2: Checkout & write page ─────────────────────────────────
       - name: "Checkout repo"
@@ -50,16 +61,26 @@ jobs:
           FILE_SIZE=$(wc -c < "$DEPLOY_DIR/index.html")
           echo "✅ Written to $DEPLOY_DIR/index.html ($FILE_SIZE bytes)"
 
-          curl -s -X POST "${{ vars.ZEKT_DEMO_API }}/api/demo/progress" \
-            -H "Content-Type: application/json" \
-            -d "{
-              \"correlationId\": \"$CORRELATION\",
-              \"workflow\": \"consumer\",
-              \"step\": 2,
-              \"totalSteps\": 4,
-              \"status\": \"in_progress\",
-              \"message\": \"Page written to repo ✅\"
-            }"
+          DEMO_API="${{ vars.ZEKT_DEMO_API }}"
+          if [ -z "$DEMO_API" ]; then
+            echo "::warning::ZEKT_DEMO_API not set — skipping progress report"
+          else
+            HTTP_CODE=$(curl -s -o /tmp/curl_response.txt -w "%{http_code}" -X POST "${DEMO_API}/api/demo/progress" \
+              -H "Content-Type: application/json" \
+              -d "{
+                \"correlationId\": \"$CORRELATION\",
+                \"workflow\": \"consumer\",
+                \"step\": 2,
+                \"totalSteps\": 4,
+                \"status\": \"in_progress\",
+                \"message\": \"Page written to repo ✅\"
+              }") || HTTP_CODE="000"
+            echo "📡 Progress report: HTTP $HTTP_CODE"
+            cat /tmp/curl_response.txt 2>/dev/null && echo
+            if [ "$HTTP_CODE" != "200" ]; then
+              echo "::warning::Progress report failed with HTTP $HTTP_CODE"
+            fi
+          fi
 
       # ── Step 3: Commit & push (triggers GitHub Pages) ─────────────────
       - name: "Step 3: Deploy to GitHub Pages"
@@ -74,16 +95,26 @@ jobs:
 
           echo "✅ Committed and pushed — GitHub Pages will rebuild"
 
-          curl -s -X POST "${{ vars.ZEKT_DEMO_API }}/api/demo/progress" \
-            -H "Content-Type: application/json" \
-            -d "{
-              \"correlationId\": \"$CORRELATION\",
-              \"workflow\": \"consumer\",
-              \"step\": 3,
-              \"totalSteps\": 4,
-              \"status\": \"in_progress\",
-              \"message\": \"Deployed to GitHub Pages ✅\"
-            }"
+          DEMO_API="${{ vars.ZEKT_DEMO_API }}"
+          if [ -z "$DEMO_API" ]; then
+            echo "::warning::ZEKT_DEMO_API not set — skipping progress report"
+          else
+            HTTP_CODE=$(curl -s -o /tmp/curl_response.txt -w "%{http_code}" -X POST "${DEMO_API}/api/demo/progress" \
+              -H "Content-Type: application/json" \
+              -d "{
+                \"correlationId\": \"$CORRELATION\",
+                \"workflow\": \"consumer\",
+                \"step\": 3,
+                \"totalSteps\": 4,
+                \"status\": \"in_progress\",
+                \"message\": \"Deployed to GitHub Pages ✅\"
+              }") || HTTP_CODE="000"
+            echo "📡 Progress report: HTTP $HTTP_CODE"
+            cat /tmp/curl_response.txt 2>/dev/null && echo
+            if [ "$HTTP_CODE" != "200" ]; then
+              echo "::warning::Progress report failed with HTTP $HTTP_CODE"
+            fi
+          fi
 
       # ── Step 4: Verify live & report URL ──────────────────────────────
       - name: "Step 4: Verify & report URL"
@@ -106,17 +137,27 @@ jobs:
           done
 
           # Report completion with deployed URL
-          curl -s -X POST "${{ vars.ZEKT_DEMO_API }}/api/demo/progress" \
-            -H "Content-Type: application/json" \
-            -d "{
-              \"correlationId\": \"$CORRELATION\",
-              \"workflow\": \"consumer\",
-              \"step\": 4,
-              \"totalSteps\": 4,
-              \"status\": \"completed\",
-              \"message\": \"Page is LIVE at $DEPLOYED_URL\",
-              \"deployedUrl\": \"$DEPLOYED_URL\"
-            }"
+          DEMO_API="${{ vars.ZEKT_DEMO_API }}"
+          if [ -z "$DEMO_API" ]; then
+            echo "::warning::ZEKT_DEMO_API not set — skipping final progress report"
+          else
+            HTTP_CODE=$(curl -s -o /tmp/curl_response.txt -w "%{http_code}" -X POST "${DEMO_API}/api/demo/progress" \
+              -H "Content-Type: application/json" \
+              -d "{
+                \"correlationId\": \"$CORRELATION\",
+                \"workflow\": \"consumer\",
+                \"step\": 4,
+                \"totalSteps\": 4,
+                \"status\": \"completed\",
+                \"message\": \"Page is LIVE at $DEPLOYED_URL\",
+                \"deployedUrl\": \"$DEPLOYED_URL\"
+              }") || HTTP_CODE="000"
+            echo "📡 Final progress report: HTTP $HTTP_CODE"
+            cat /tmp/curl_response.txt 2>/dev/null && echo
+            if [ "$HTTP_CODE" != "200" ]; then
+              echo "::warning::Final progress report failed with HTTP $HTTP_CODE"
+            fi
+          fi
 
           echo ""
           echo "🎉 ════════════════════════════════════════════"
