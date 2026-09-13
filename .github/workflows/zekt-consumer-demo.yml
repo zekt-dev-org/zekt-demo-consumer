@@ -12,8 +12,31 @@ env:
 jobs:
   handle-zekt-event:
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write   # Spec 119, 4.8 — mint the OIDC token the Zekt demo API requires
+      contents: read
     
     steps:
+      # Spec 119, 4.8 — the Zekt demo API authenticates progress reports with the GitHub
+      # Actions OIDC token. It used to accept any caller quoting a correlation id, and that id
+      # is public: it is echoed below, shown in this run's inputs, and printed on the deployed
+      # page. The OIDC token is minted per run and masked immediately — never let it reach a
+      # log, or this is back where it started.
+      - name: Mint Zekt OIDC token
+        shell: bash
+        run: |
+          RESPONSE=$(curl -sSL \
+            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=api://zekt" || echo '')
+          TOKEN=$(echo "$RESPONSE" | jq -r '.value // empty' 2>/dev/null || echo '')
+          if [ -z "$TOKEN" ]; then
+            echo "::warning::Could not mint a Zekt OIDC token; progress reports will be unauthenticated."
+          else
+            echo "::add-mask::$TOKEN"
+            echo "ZEKT_OIDC_TOKEN=$TOKEN" >> "$GITHUB_ENV"
+            echo "🔑 Zekt OIDC token minted"
+          fi
+
       # ========================================
       # STEP 1: Receive Zekt Event
       # ========================================
@@ -43,6 +66,7 @@ jobs:
               Invoke-RestMethod -Uri "${{ env.ZEKT_API_BASE }}/api/demo/progress" `
                 -Method Post `
                 -ContentType "application/json" `
+                -Headers @{ Authorization = "Bearer $env:ZEKT_OIDC_TOKEN" } `
                 -Body $body
               Write-Host "✅ Progress reported: Step 1" -ForegroundColor Cyan
             } catch {
@@ -93,6 +117,7 @@ jobs:
               Invoke-RestMethod -Uri "${{ env.ZEKT_API_BASE }}/api/demo/progress" `
                 -Method Post `
                 -ContentType "application/json" `
+                -Headers @{ Authorization = "Bearer $env:ZEKT_OIDC_TOKEN" } `
                 -Body $body
               Write-Host "✅ Progress reported: Step 2" -ForegroundColor Cyan
             } catch {
@@ -138,6 +163,7 @@ jobs:
               Invoke-RestMethod -Uri "${{ env.ZEKT_API_BASE }}/api/demo/progress" `
                 -Method Post `
                 -ContentType "application/json" `
+                -Headers @{ Authorization = "Bearer $env:ZEKT_OIDC_TOKEN" } `
                 -Body $body
               Write-Host "✅ Progress reported: Step 3" -ForegroundColor Cyan
             } catch {
@@ -177,6 +203,7 @@ jobs:
               Invoke-RestMethod -Uri "${{ env.ZEKT_API_BASE }}/api/demo/progress" `
                 -Method Post `
                 -ContentType "application/json" `
+                -Headers @{ Authorization = "Bearer $env:ZEKT_OIDC_TOKEN" } `
                 -Body $body
               Write-Host "✅ Progress reported: Step 4 (COMPLETED)" -ForegroundColor Cyan
               Write-Host "🎊 Demo UI should now show completion!" -ForegroundColor Green
